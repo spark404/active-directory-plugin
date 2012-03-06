@@ -11,7 +11,7 @@ import hudson.model.Hudson
 // global so that this bean can be retrieved as UserDetailsService
 if(realm.descriptor.canDoNativeAuth() && realm.domain==null)
     // Windows path requires com4j, which is currently only supported on Win32
-    activeDirectory(ActiveDirectoryAuthenticationProvider)
+    activeDirectory(ActiveDirectoryAuthenticationProvider,realm) {}
 else
     activeDirectory(ActiveDirectoryUnixAuthenticationProvider,realm) {}
 

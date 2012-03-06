@@ -100,6 +100,21 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
     public final String bindName;
 
     public final Secret bindPassword;
+    
+    /**
+     * For those of us that store usernames in other places than
+     * samAccountName. Comma separated list of attributes to 
+     * include in the search query for the username.
+     */
+    public final String additionalUsernameAttributes;
+    
+    /**
+     * Not every item is replicated into the global catalog
+     * if you have an additional attribute that is not
+     * replicated you want to connect to ldap and not
+     * the gc.
+     */
+    public final boolean useGlobalCatalog;
 
     /**
      * If non-null, Jenkins will try to connect at this server at the first priority, before falling back to
@@ -108,11 +123,13 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
     public final String server;
 
     @DataBoundConstructor
-    public ActiveDirectorySecurityRealm(String domain, String site, String bindName, String bindPassword, String server) {
+    public ActiveDirectorySecurityRealm(String domain, String site, String bindName, String bindPassword, String server, String additionalUsernameAttributes, String useGlobalCatalog) {
         this.domain = fixEmpty(domain);
         this.site = fixEmpty(site);
         this.bindName = fixEmpty(bindName);
         this.bindPassword = Secret.fromString(fixEmpty(bindPassword));
+        this.additionalUsernameAttributes = additionalUsernameAttributes;
+        this.useGlobalCatalog = Boolean.parseBoolean(useGlobalCatalog);
 
         // append default port if not specified
         server = fixEmpty(server);
@@ -239,7 +256,7 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
         private static boolean WARNED = false;
 
         public FormValidation doValidate(@QueryParameter(fixEmpty = true) String domain, @QueryParameter(fixEmpty = true) String site, @QueryParameter(fixEmpty = true) String bindName,
-                @QueryParameter(fixEmpty = true) String bindPassword, @QueryParameter(fixEmpty = true) String server) throws IOException, ServletException, NamingException {
+                @QueryParameter(fixEmpty = true) String bindPassword, @QueryParameter(fixEmpty = true) String server, @QueryParameter String useGlobalCatalog) throws IOException, ServletException, NamingException {
             ClassLoader ccl = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
             try {
@@ -283,7 +300,7 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
                     // then look for the LDAP server
                     List<SocketInfo> servers;
                     try {
-                        servers = obtainLDAPServer(ictx, name, site, server);
+                        servers = obtainLDAPServer(ictx, name, site, server, Boolean.parseBoolean(useGlobalCatalog));
                     } catch (NamingException e) {
                         String msg = site==null ? "No LDAP server was found in "+name : "No LDAP server was found in the "+site+" site of "+name;
                         LOGGER.log(Level.WARNING, msg, e);
@@ -429,8 +446,8 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
             return new InitialDirContext(env);
         }
 
-        public List<SocketInfo> obtainLDAPServer(String domainName, String site, String preferredServer) throws NamingException {
-            return obtainLDAPServer(createDNSLookupContext(), domainName, site, preferredServer);
+        public List<SocketInfo> obtainLDAPServer(String domainName, String site, String preferredServer, boolean useGlobalCatalog) throws NamingException {
+            return obtainLDAPServer(createDNSLookupContext(), domainName, site, preferredServer, useGlobalCatalog);
         }
 
         // domain name prefixes
@@ -444,7 +461,7 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
          *      If non-null, this server is returned as the first preference in the returned list.
          * @return A list with at least one item.
          */
-        public List<SocketInfo> obtainLDAPServer(DirContext ictx, String domainName, String site, String preferredServer) throws NamingException {
+        public List<SocketInfo> obtainLDAPServer(DirContext ictx, String domainName, String site, String preferredServer, boolean useGlobalCatalog) throws NamingException {
             List<SocketInfo> result = new ArrayList<SocketInfo>();
             if (preferredServer!=null)
                 result.add(new SocketInfo(preferredServer));
@@ -464,14 +481,26 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
             NamingException failure = null;
 
             // try global catalog if it exists first, then the particular domain
-            for (String candidate : CANDIDATES) {
-                ldapServer = candidate+(site!=null ? site+"._sites." : "")+domainName;
+            if (useGlobalCatalog)
+	            for (String candidate : CANDIDATES) {
+	                ldapServer = candidate+(site!=null ? site+"._sites." : "")+domainName;
+	                LOGGER.fine("Attempting to resolve "+ldapServer+" to SRV record");
+	                try {
+	                    Attributes attributes = ictx.getAttributes(ldapServer, new String[] { "SRV" });
+	                    a = attributes.get("SRV");
+	                    if (a!=null)
+	                        break;
+	                } catch (NamingException e) {
+	                    // failed retrieval. try next option.
+	                    failure = e;
+	                }
+	            }
+            else { 
+                ldapServer = "_ldap._tcp."+(site!=null ? site+"._sites." : "")+ "dc._msdcs." + domainName;
                 LOGGER.fine("Attempting to resolve "+ldapServer+" to SRV record");
                 try {
                     Attributes attributes = ictx.getAttributes(ldapServer, new String[] { "SRV" });
                     a = attributes.get("SRV");
-                    if (a!=null)
-                        break;
                 } catch (NamingException e) {
                     // failed retrieval. try next option.
                     failure = e;

@@ -50,8 +50,12 @@ public class ActiveDirectoryUnixAuthenticationProvider extends AbstractActiveDir
     private final String server;
 
     private final String bindName, bindPassword;
+    
+    private final String[] additionalUsernameAttributes;
 
     private final ActiveDirectorySecurityRealm.DesciprotrImpl descriptor;
+    
+    private final boolean useGlobalCatalog;
 
     private final LRUMap/*<String,GroupCacheEntry>*/ groupCache = new LRUMap(256);
     
@@ -86,6 +90,17 @@ public class ActiveDirectoryUnixAuthenticationProvider extends AbstractActiveDir
         this.server = realm.server;
         this.bindPassword = Secret.toString(realm.bindPassword);
         this.descriptor = realm.getDescriptor();
+        
+        if (realm.additionalUsernameAttributes != null) {
+        	String[] extraAttributes = realm.additionalUsernameAttributes.split(",");
+        	additionalUsernameAttributes = new String[1 + extraAttributes.length];
+        	additionalUsernameAttributes[0] = new String("sAMAccountName");
+        	System.arraycopy(extraAttributes, 0, additionalUsernameAttributes, 1, extraAttributes.length);
+        }
+        else
+        	additionalUsernameAttributes = new String[] { "sAMAccountName" };
+        
+        this.useGlobalCatalog = realm.useGlobalCatalog;
     }
 
     protected UserDetails retrieveUser(String username, UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
@@ -139,7 +154,7 @@ public class ActiveDirectoryUnixAuthenticationProvider extends AbstractActiveDir
      */
     private List<SocketInfo> obtainLDAPServers(String domainName) throws AuthenticationServiceException {
         try {
-            return descriptor.obtainLDAPServer(domainName, site, server);
+            return descriptor.obtainLDAPServer(domainName, site, server, useGlobalCatalog);
         } catch (NamingException e) {
             LOGGER.log(Level.WARNING, "Failed to find the LDAP service", e);
             throw new AuthenticationServiceException("Failed to find the LDAP service for the domain "+domainName, e);
@@ -193,7 +208,7 @@ public class ActiveDirectoryUnixAuthenticationProvider extends AbstractActiveDir
                 // failed to find it. Fall back to sAMAccountName.
                 // see http://www.nabble.com/Re%3A-Hudson-AD-plug-in-td21428668.html
                 LOGGER.fine("Failed to find "+id+" in userPrincipalName. Trying sAMAccountName");
-                user = new LDAPSearchBuilder(context,domainDN).subTreeScope().searchOne("(& (sAMAccountName={0})(objectCategory=user))",id);
+                user = new LDAPSearchBuilder(context,domainDN).subTreeScope().searchOne("(& " + buildUsernameOrQuery(additionalUsernameAttributes, "{0}") + "(objectCategory=user))",id);
                 if (user==null) {
                     throw new UsernameNotFoundException("Authentication was successful but cannot locate the user information for "+username);
                 }
@@ -443,6 +458,27 @@ public class ActiveDirectoryUnixAuthenticationProvider extends AbstractActiveDir
         }
         return buf.toString();
     }
+    
+	protected String buildUsernameOrQuery(String[] attributes, String userOrGroupname) {
+		assert(attributes.length > 0);
+		
+		if (attributes.length == 1) {
+			// No use building an or query with one element
+			return "(" + attributes[0] + "=" + userOrGroupname + ")";
+		}
+		
+		StringBuffer sb = new StringBuffer();
+		sb.append("(|");
+		for (String attribute: attributes) {
+			sb.append("(");
+			sb.append(attribute);
+			sb.append("=");
+			sb.append(userOrGroupname);
+			sb.append(")");
+		}
+		sb.append(")");
+		return sb.toString();
+	}
 
     private static final Logger LOGGER = Logger.getLogger(ActiveDirectoryUnixAuthenticationProvider.class.getName());
 

@@ -45,8 +45,9 @@ public class ActiveDirectoryAuthenticationProvider extends AbstractActiveDirecto
      * ADO connection for searching Active Directory.
      */
     private final _Connection con;
+    private final String[] additionalUsernameAttributes;
 
-    public ActiveDirectoryAuthenticationProvider() {
+    public ActiveDirectoryAuthenticationProvider(ActiveDirectorySecurityRealm realm) {
         IADs rootDSE = COM4J.getObject(IADs.class, "LDAP://RootDSE", null);
 
         defaultNamingContext = (String)rootDSE.get("defaultNamingContext");
@@ -55,6 +56,16 @@ public class ActiveDirectoryAuthenticationProvider extends AbstractActiveDirecto
         con = ClassFactory.createConnection();
         con.provider("ADsDSOObject");
         con.open("Active Directory Provider",""/*default*/,""/*default*/,-1/*default*/);
+        
+        if (realm.additionalUsernameAttributes != null) {
+        	String[] extraAttributes = realm.additionalUsernameAttributes.split(",");
+        	additionalUsernameAttributes = new String[1 + extraAttributes.length];
+        	additionalUsernameAttributes[0] = new String("sAMAccountName");
+        	System.arraycopy(extraAttributes, 0, additionalUsernameAttributes, 1, extraAttributes.length);
+        }
+        else
+        	additionalUsernameAttributes = new String[] { "sAMAccountName" };
+        	
     }
 
     protected UserDetails retrieveUser(String username, UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
@@ -157,8 +168,8 @@ public class ActiveDirectoryAuthenticationProvider extends AbstractActiveDirecto
     protected String getDnOfUserOrGroup(String userOrGroupname) {
 		_Command cmd = ClassFactory.createCommand();
         cmd.activeConnection(con);
-
-        cmd.commandText("<LDAP://"+defaultNamingContext+">;(sAMAccountName="+userOrGroupname+");distinguishedName;subTree");
+        
+        cmd.commandText("<LDAP://"+defaultNamingContext+">;"+buildUsernameOrQuery(additionalUsernameAttributes, userOrGroupname)+";distinguishedName;subTree");
         _Recordset rs = cmd.execute(null, Variant.MISSING, -1/*default*/);
         if(rs.eof())
             throw new UsernameNotFoundException("No such user or group: "+userOrGroupname);
@@ -181,5 +192,26 @@ public class ActiveDirectoryAuthenticationProvider extends AbstractActiveDirecto
 			throw new UsernameNotFoundException("Group not found: " + groupname);
 		}
 		return new ActiveDirectoryGroupDetails(groupname);
+	}
+	
+	protected String buildUsernameOrQuery(String[] attributes, String userOrGroupname) {
+		assert(attributes.length > 0);
+		
+		if (attributes.length == 1) {
+			// No use building an or query with one element
+			return "(" + attributes[0] + "=" + userOrGroupname + ")";
+		}
+		
+		StringBuffer sb = new StringBuffer();
+		sb.append("(|");
+		for (String attribute: attributes) {
+			sb.append("(");
+			sb.append(attribute);
+			sb.append("=");
+			sb.append(userOrGroupname);
+			sb.append(")");
+		}
+		sb.append(")");
+		return sb.toString();
 	}
 }

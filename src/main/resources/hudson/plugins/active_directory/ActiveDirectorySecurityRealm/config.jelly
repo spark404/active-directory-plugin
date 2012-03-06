@@ -8,6 +8,9 @@
         <f:entry title="${%Domain controller}" field="server">
            <f:textbox />
          </f:entry>
+         <f:entry title="${%Use Global Catalog}" field="useGlobalCatalog">
+           <f:checkbox default="true"/>
+         </f:entry>
         <f:entry field="site" title="${%Site}">
           <f:textbox />
         </f:entry>
@@ -16,6 +19,9 @@
         </f:entry>
         <f:entry field="bindPassword" title="${%Bind Password}">
           <f:password />
+        </f:entry>
+        <f:entry field="additionalUsernameAttributes" title="${%Additional Username Attributes}">
+          <f:textbox />
         </f:entry>
       </f:advanced>
       <f:nested>
@@ -30,6 +36,9 @@
         <f:entry title="${%Domain controller}" field="server">
            <f:textbox />
          </f:entry>
+        <f:entry field="additionalUsernameAttributes" title="${%Additional Username Attributes}">
+          <f:textbox />
+        </f:entry>
       </f:advanced>
     </j:otherwise>
   </j:choose>
