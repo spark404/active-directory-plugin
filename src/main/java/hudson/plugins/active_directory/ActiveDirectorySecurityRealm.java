@@ -192,7 +192,7 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
                 for (String domainName : domain.split(",")) {
 	                try {
 	                    pw.println("Domain="+domainName+" site="+site);
-	                    List<SocketInfo> ldapServers = descriptor.obtainLDAPServer(domainName, site, server);
+	                    List<SocketInfo> ldapServers = descriptor.obtainLDAPServer(domainName, site, server, useGlobalCatalog);
 	                    pw.println("List of domain controllers: "+ldapServers);
 	                    
 	                    for (SocketInfo ldapServer : ldapServers) {
@@ -256,7 +256,7 @@ public class ActiveDirectorySecurityRealm extends AbstractPasswordBasedSecurityR
         private static boolean WARNED = false;
 
         public FormValidation doValidate(@QueryParameter(fixEmpty = true) String domain, @QueryParameter(fixEmpty = true) String site, @QueryParameter(fixEmpty = true) String bindName,
-                @QueryParameter(fixEmpty = true) String bindPassword, @QueryParameter(fixEmpty = true) String server, @QueryParameter String useGlobalCatalog) throws IOException, ServletException, NamingException {
+                @QueryParameter(fixEmpty = true) String bindPassword, @QueryParameter(fixEmpty = true) String server, @QueryParameter(fixEmpty = true) String useGlobalCatalog) throws IOException, ServletException, NamingException {
             ClassLoader ccl = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
             try {
