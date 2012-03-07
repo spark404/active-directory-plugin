@@ -25,7 +25,7 @@
         </f:entry>
       </f:advanced>
       <f:nested>
-        <f:validateButton with="domain,site,bindName,bindPassword,server" title="${%Test}" method="validate"/>
+        <f:validateButton with="domain,site,bindName,bindPassword,server,useGlobalCatalog" title="${%Test}" method="validate"/>
       </f:nested>
     </j:when>
     <j:otherwise>
